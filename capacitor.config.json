@@ -1,0 +1,9 @@
+{
+  "appId": "com.lindastay.app",
+  "appName": "LindaStay",
+  "webDir": ".",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
+}
