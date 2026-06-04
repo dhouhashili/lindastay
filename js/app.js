@@ -1,6 +1,33 @@
 const SUPABASE_URL = window.LINDASTAY_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = window.LINDASTAY_SUPABASE_ANON_KEY || '';
+let app;
+let mainView;
+
+function showBootError(message) {
+  const safeMessage = String(message || 'Une dépendance LindaStay ne s’est pas chargée.');
+  const root = document.querySelector('#app') || document.body;
+  root.innerHTML = `<div class="boot-error-screen">
+    <div class="boot-error-card">
+      <div class="brand-mark">LS</div>
+      <h1>LindaStay</h1>
+      <p>${safeMessage.replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}</p>
+      <button class="button button-fill primary-btn" onclick="location.reload()">Réessayer</button>
+    </div>
+  </div>`;
+}
+
+if (!window.Framework7) {
+  showBootError('Framework7 ne s’est pas chargé. Vérifie la connexion internet puis réessaie.');
+  throw new Error('Framework7 dependency missing');
+}
+
+if (!window.supabase?.createClient) {
+  showBootError('Supabase ne s’est pas chargé. Vérifie la connexion internet puis réessaie.');
+  throw new Error('Supabase dependency missing');
+}
+
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+window.sb = sb;
 
 const state = {
   user: null,
@@ -297,8 +324,9 @@ const AdminPage = {
   async mounted() { await requireAuth(); if (!isAdmin()) return mainView.router.navigate('/home/'); adminLogout.onclick = async () => { await sb.auth.signOut(); mainView.router.navigate('/'); }; const [profiles, subscriptions, properties, tickets] = await Promise.all([sb.from('profiles').select('*').order('created_at', { ascending: false }), sb.from('subscriptions').select('*'), sb.from('properties').select('id'), sb.from('support_tickets').select('*').order('created_at', { ascending: false })]); const users = profiles.data || []; const subs = subscriptions.data || []; const props = properties.data || []; const active = users.filter(u => u.subscription_status === 'active').length; const expired = users.filter(u => ['expired','blocked'].includes(u.subscription_status)).length; const mrr = subs.filter(s => s.status === 'active').reduce((sum, s) => sum + Number(s.price_monthly || 0), 0); adminRoot.innerHTML = `<div class="stats-grid">${statCard(t('users'), users.length, '', 'primary')}${statCard('Active subscriptions', active, '', 'success')}${statCard('Expired subscriptions', expired, '', 'secondary')}${statCard('Total properties', props.length, '', 'info')}${statCard(t('mrr'), money(mrr), '', 'neutral')}${statCard(t('newCustomers'), users.filter(u => u.created_at >= addDays(todayISO(), -30)).length, '', 'neutral')}</div><div class="content-grid two-col"><div class="lux-card"><h3>Users Management</h3>${users.map(u => `<div class="admin-user"><div><b>${esc(u.email)}</b><span>${u.role} · ${u.subscription_status} · ${u.subscription_plan || 'free'} · ${u.subscription_end || '-'}</span></div><div class="button-row"><button class="button button-small button-fill" onclick="window.adminActions.activate('${u.id}')">Activate</button><button class="button button-small button-outline" onclick="window.adminActions.suspend('${u.id}')">Suspend</button><button class="button button-small color-red" onclick="window.adminActions.remove('${u.id}')">Delete</button></div></div>`).join('')}</div><div class="lux-card"><h3>${t('support')}</h3>${(tickets.data || []).map(ticket => `<div class="mini-item"><div><b>${esc(ticket.subject)}</b><span>${esc(ticket.message)}</span></div><strong>${ticket.status}</strong></div>`).join('') || emptyState('No tickets')}<h3>${t('globalSettings')}</h3><div class="pill-row"><span>Pricing</span><span>WhatsApp templates</span><span>Email templates</span><span>Languages</span></div></div></div>`; window.adminActions = { activate: id => this.changeStatus(id, 'active', 'pro'), suspend: id => this.changeStatus(id, 'blocked', 'free'), remove: id => this.deleteUser(id) }; }
 };
 
+try {
 app = new Framework7({
-  el: '#app', name: 'LindaStay', theme: 'ios', init: false,
+  root: '#app', name: 'LindaStay', theme: 'ios', init: false,
   routes: [
     { path: '/', component: LoginPage }, { path: '/register/', component: RegisterPage }, { path: '/forgot/', component: ForgotPage },
     { path: '/home/', component: DashboardPage }, { path: '/calendar/', component: CalendarPage }, { path: '/reservations/', component: ReservationsPage }, { path: '/reservations/new/', component: ReservationNewPage },
@@ -307,7 +335,14 @@ app = new Framework7({
 });
 mainView = app.views.create('.view-main', { url: '/' });
 app.init();
-loadSession().then(() => { if (state.user) mainView.router.navigate(isAdmin() ? '/admin/' : '/home/', { reloadCurrent: true }); });
+loadSession().then(() => { if (state.user) mainView.router.navigate(isAdmin() ? '/admin/' : '/home/', { reloadCurrent: true }); }).catch(error => {
+  console.error('LindaStay session bootstrap failed', error);
+  showBootError('Impossible de charger la session LindaStay. Réessaie dans quelques secondes.');
+});
+} catch (error) {
+  console.error('LindaStay boot failed', error);
+  showBootError('LindaStay n’a pas pu démarrer. Réessaie après un rafraîchissement.');
+}
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('./sw.js').catch(() => {});

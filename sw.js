@@ -1,5 +1,5 @@
-const CACHE_NAME = 'lindastay-v1';
-const ASSETS = ['./', './index.html', './css/app.css', './js/app.js', './js/config.js', './manifest.webmanifest'];
+const CACHE_NAME = 'lindastay-v2-white-screen';
+const ASSETS = ['./', './index.html', './css/app.css', './css/lindastay-whatsapp-automation.css', './js/app.js', './js/config.js', './js/lindastay-whatsapp-automation.js', './manifest.webmanifest'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
 });
@@ -12,5 +12,8 @@ self.addEventListener('fetch', event => {
     const copy = response.clone();
     caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
     return response;
-  }).catch(() => caches.match('./index.html'))));
+  }).catch(() => {
+    if (event.request.mode === 'navigate') return caches.match('./index.html');
+    return Response.error();
+  })));
 });

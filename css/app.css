@@ -129,3 +129,37 @@ html[dir="rtl"] .reservation-row > div:last-child { text-align: left; }
   .mini-item, .reservation-row, .admin-user { display: grid; }
   .reservation-row > div:last-child { text-align: left; }
 }
+
+.boot-loading,
+.boot-error-screen {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: #1E4D6B;
+  background: linear-gradient(180deg, #f8fbfd, #eef5f8);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+}
+
+.boot-loading {
+  font-weight: 800;
+}
+
+.boot-error-card {
+  width: min(420px, 100%);
+  padding: 28px;
+  border-radius: 28px;
+  background: #fff;
+  box-shadow: 0 20px 50px rgba(30, 77, 107, .16);
+  text-align: center;
+}
+
+.boot-error-card h1 {
+  margin: 14px 0 8px;
+}
+
+.boot-error-card p {
+  margin: 0 0 18px;
+  color: #5d7280;
+  line-height: 1.5;
+}
