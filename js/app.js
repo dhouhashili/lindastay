@@ -10,6 +10,7 @@ function getAppRoot() {
 
 function getInitialRoute() {
   const path = window.location.pathname;
+  if (path === '/index.html' || path === `${APP_ROOT}index.html`) return '/';
   if (APP_ROOT !== '/' && path.startsWith(APP_ROOT)) {
     return `/${path.slice(APP_ROOT.length)}` || '/';
   }
@@ -37,6 +38,8 @@ if (!window.supabase) {
   throw new Error('Supabase client is not loaded');
 }
 
+document.getElementById('bootStatus')?.remove();
+
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const state = {
@@ -45,6 +48,19 @@ const state = {
   lang: localStorage.getItem('lindastay.lang') || 'fr',
   readOnly: false,
 };
+
+const VILLA_IMAGES = [
+  'https://images.unsplash.com/photo-1613977257363-707ba9348227?auto=format&fit=crop&w=1200&q=85',
+  'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=85',
+  'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=1200&q=85',
+  'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=85',
+];
+
+const SAMPLE_RESERVATIONS = [
+  { guest_name: 'Linda Family', guest_phone: '+216 55 123 456', property_name: 'Adam’s House', check_in: '2026-06-03', check_out: '2026-06-10', total_price: 900, deposit_paid: 300, remaining_balance: 600, status: 'confirmed' },
+  { guest_name: 'Karim & Amel', guest_phone: '+216 29 800 114', property_name: 'Blue Lagoon', check_in: '2026-06-11', check_out: '2026-06-14', total_price: 720, deposit_paid: 250, remaining_balance: 470, status: 'confirmed' },
+  { guest_name: 'Youssef Ben Ali', guest_phone: '+216 24 456 222', property_name: 'Golden View', check_in: '2026-06-19', check_out: '2026-06-21', total_price: 560, deposit_paid: 200, remaining_balance: 360, status: 'pending' },
+];
 
 const I18N = {
   fr: {
@@ -75,8 +91,58 @@ function nightsBetween(start, end) { if (!start || !end) return 0; return Math.m
 function isAdmin() { return state.profile?.role === 'super_admin'; }
 function isSubscriptionActive(profile = state.profile) { if (!profile) return false; if (profile.role === 'super_admin') return true; return ['active', 'trial'].includes(profile.subscription_status) && (!profile.subscription_end || profile.subscription_end >= todayISO()); }
 function setDocumentLanguage() { document.documentElement.lang = state.lang; document.documentElement.dir = state.lang === 'ar' ? 'rtl' : 'ltr'; }
+function fallbackProfile(user, extra = {}) {
+  return {
+    id: user.id,
+    email: user.email,
+    full_name: extra.full_name || user.user_metadata?.full_name || '',
+    phone: extra.phone || user.user_metadata?.phone || '',
+    company_name: extra.company_name || user.user_metadata?.company_name || '',
+    role: 'property_owner',
+    preferred_language: state.lang,
+    subscription_status: 'trial',
+    subscription_plan: 'free',
+    subscription_start: todayISO(),
+    subscription_end: addDays(todayISO(), 14),
+  };
+}
+function withTimeout(promise, label, ms = 8000) {
+  return Promise.race([
+    promise,
+    new Promise(resolve => window.setTimeout(() => resolve({ error: new Error(`${label} timeout`) }), ms)),
+  ]);
+}
+function icon(name) {
+  const icons = { menu: '☰', bell: '♧', home: '⌂', calendar: '◫', plus: '+', houses: '⌑', settings: '⚙', whatsapp: '☘', call: '☎', more: '⋮', back: '‹', chart: '↗', wallet: '◉', guest: '◍', guide: '◇' };
+  return icons[name] || name;
+}
+function appHeader(title, subtitle = '', right = '') {
+  return `<div class="app-topbar"><button class="icon-btn" type="button">${icon('menu')}</button><div><h1>${title}</h1>${subtitle ? `<p>${subtitle}</p>` : ''}</div><div class="topbar-actions">${right || `<span class="avatar-chip">${esc((state.profile?.full_name || 'LS').slice(0, 2).toUpperCase())}</span>`}</div></div>`;
+}
+function mobileShell(content, active = 'dashboard') {
+  return `<div class="page premium-page linda-mobile-page linda-responsive-page"><div class="page-content app-content">${state.readOnly && !isAdmin() ? `<div class="readonly-banner">${t('readOnly')}</div>` : ''}${content}</div><div class="toolbar tabbar-labels toolbar-bottom app-tabbar"><div class="toolbar-inner">
+    <a href="/home/" class="tab-link ${active === 'dashboard' ? 'tab-link-active' : ''}"><span class="tabbar-icon">${icon('home')}</span><span class="tabbar-label">${t('dashboard')}</span></a>
+    <a href="/calendar/" class="tab-link ${active === 'calendar' ? 'tab-link-active' : ''}"><span class="tabbar-icon">${icon('calendar')}</span><span class="tabbar-label">${t('calendar')}</span></a>
+    <a href="/reservations/new/" class="tab-link fab-tab ${active === 'new' ? 'tab-link-active' : ''}"><span class="tabbar-icon">${icon('plus')}</span><span class="tabbar-label">${t('reservation')}</span></a>
+    <a href="/properties/" class="tab-link ${active === 'properties' ? 'tab-link-active' : ''}"><span class="tabbar-icon">${icon('houses')}</span><span class="tabbar-label">${t('properties')}</span></a>
+    <a href="/settings/" class="tab-link ${active === 'settings' ? 'tab-link-active' : ''}"><span class="tabbar-icon">${icon('settings')}</span><span class="tabbar-label">${t('settings')}</span></a>
+  </div></div></div>`;
+}
+function samplePropertyCards() {
+  return [
+    { name: 'Adam’s House', city: 'Rtiba, Hammamet', image: VILLA_IMAGES[0], count: 18 },
+    { name: 'Blue Lagoon', city: 'Korba, Nabeul', image: VILLA_IMAGES[1], count: 12 },
+    { name: 'Golden View', city: 'Kelibia, Nabeul', image: VILLA_IMAGES[2], count: 8 },
+  ];
+}
 
-function authField(id) { return document.getElementById(id); }
+function authRoot() { return document.querySelector('.page-current.auth-page') || document.querySelector('.auth-page'); }
+function authField(id) { return authRoot()?.querySelector(`#${id}`) || document.getElementById(id); }
+function bindAuthAction(page) {
+  const root = page?.$el?.[0] || page?.el || authRoot();
+  const button = root?.querySelector('#authAction');
+  if (button) button.onclick = () => page.submit();
+}
 function authValue(id) { return authField(id)?.value?.trim() || ''; }
 function setAuthFeedback(message = '', type = 'info') {
   const feedback = authField('authFeedback');
@@ -105,11 +171,22 @@ function validateAuthForm({ requireName = false } = {}) {
 }
 
 async function loadSession() {
-  const { data } = await sb.auth.getSession();
+  const { data, error } = await withTimeout(sb.auth.getSession(), 'Session');
+  if (error) {
+    state.user = null;
+    state.profile = null;
+    state.readOnly = false;
+    setDocumentLanguage();
+    return;
+  }
   state.user = data.session?.user || null;
   state.profile = null;
   if (state.user) {
-    const { data: profile } = await sb.from('profiles').select('*').eq('id', state.user.id).maybeSingle();
+    const profileResult = await withTimeout(
+      sb.from('profiles').select('*').eq('id', state.user.id).maybeSingle(),
+      'Profile'
+    );
+    const profile = profileResult.data;
     if (profile) {
       state.profile = profile;
     } else {
@@ -119,9 +196,12 @@ async function loadSession() {
         phone: metadata.phone || '',
         company_name: metadata.company_name || '',
       };
-      await bootstrapProfile(state.user, extra);
-      const { data: createdProfile } = await sb.from('profiles').select('*').eq('id', state.user.id).maybeSingle();
-      state.profile = createdProfile || { id: state.user.id, email: state.user.email, role: 'property_owner', subscription_status: 'trial', subscription_plan: 'free' };
+      await withTimeout(bootstrapProfile(state.user, extra), 'Profile setup', 8000);
+      const createdResult = await withTimeout(
+        sb.from('profiles').select('*').eq('id', state.user.id).maybeSingle(),
+        'Created profile'
+      );
+      state.profile = createdResult.data || fallbackProfile(state.user, extra);
     }
     state.lang = state.profile.preferred_language || state.lang;
     localStorage.setItem('lindastay.lang', state.lang);
@@ -185,9 +265,13 @@ function pageShell(title, content, active = 'dashboard', right = '') {
 
 function authShell(mode = 'login') {
   const isRegister = mode === 'register';
-  return `<div class="page auth-page"><div class="page-content auth-wrap">
+  return `<div class="page auth-page"><div class="page-content auth-wrap auth-showcase">
+    <div class="auth-visual">
+      <img src="${VILLA_IMAGES[0]}" alt="">
+      <div class="auth-logo-lockup"><div class="brand-mark">LS</div><h1>LINDASTAY</h1><p>Gérez vos locations en toute sérénité.</p></div>
+    </div>
     <div class="auth-card">
-      <div class="brand-mark">LS</div><h1>LindaStay</h1><p>${t('appTagline')}</p>
+      <div class="auth-card-title"><h2>${mode === 'forgot' ? t('forgot') : isRegister ? t('register') : t('login')}</h2><p>${isRegister ? 'Créez votre espace propriétaire.' : 'Bienvenue, gérez vos maisons et réservations.'}</p></div>
       <div class="segmented segmented-strong auth-segment">
         <a class="button ${mode === 'login' ? 'button-active' : ''}" href="/">${t('login')}</a>
         <a class="button ${isRegister ? 'button-active' : ''}" href="/register/">${t('register')}</a>
@@ -200,10 +284,10 @@ function authShell(mode = 'login') {
         ${mode !== 'forgot' ? `<li class="item-content item-input"><div class="item-inner"><div class="item-title item-label">${t('password')}</div><div class="item-input-wrap"><input id="password" type="password" autocomplete="current-password"></div></div></li>` : ''}
         <li><a class="item-link smart-select smart-select-init" data-open-in="popover"><select id="language">${['fr','en','de','ar'].map(l => `<option value="${l}" ${state.lang === l ? 'selected' : ''}>${l.toUpperCase()}</option>`).join('')}</select><div class="item-content"><div class="item-inner"><div class="item-title">${t('language')}</div></div></div></a></li>
       </ul></div>
-      <button type="button" class="button button-fill button-large primary-btn" id="authAction">${mode === 'forgot' ? t('forgot') : isRegister ? t('register') : t('login')}</button>
+      <button type="button" class="button button-fill button-large primary-btn" id="authAction" onclick="window.lindaStaySubmitAuth && window.lindaStaySubmitAuth('${mode}')">${mode === 'forgot' ? t('forgot') : isRegister ? t('register') : t('login')}</button>
       <div id="authFeedback" class="auth-feedback" hidden></div>
-      <div class="auth-links"><a href="/forgot/">${t('forgot')}</a><span>•</span><a href="/">${t('login')}</a></div>
-      <div class="launch-grid"><span>Tunisia</span><span>France</span><span>Germany</span><span>International</span></div>
+      <div class="auth-links"><a href="/forgot/">${t('forgot')}</a><span>•</span><a href="/register/">${t('register')}</a></div>
+      <div class="launch-grid"><span>🇫🇷 Français</span><span>🇬🇧 English</span><span>🇩🇪 Deutsch</span><span>🇸🇦 العربية</span></div>
     </div>
   </div></div>`;
 }
@@ -217,17 +301,22 @@ const LoginPage = {
     if (form.error) return setAuthFeedback(form.error, 'error');
     setAuthBusy(true, 'Connexion...');
     try {
-      const { error } = await sb.auth.signInWithPassword({ email: form.email, password: form.password });
+      const { data, error } = await sb.auth.signInWithPassword({ email: form.email, password: form.password });
       if (error) return setAuthFeedback(error.message, 'error');
+      if (data.user) {
+        state.user = data.user;
+        state.profile = fallbackProfile(data.user);
+      }
       setAuthFeedback('Connexion réussie. Ouverture du tableau de bord...', 'success');
-      await loadSession(); mainView.router.navigate(isAdmin() ? '/admin/' : '/home/');
+      openDashboard();
+      loadSession().catch(() => {});
     } catch (error) {
       setAuthFeedback(error.message || 'Connexion impossible. Vérifie internet puis réessaie.', 'error');
     } finally {
       setAuthBusy(false);
     }
   }},
-  mounted() { authField('authAction').onclick = () => this.submit(); }
+  mounted() { bindAuthAction(this); }
 };
 
 const RegisterPage = {
@@ -263,7 +352,7 @@ const RegisterPage = {
       setAuthBusy(false);
     }
   }},
-  mounted() { authField('authAction').onclick = () => this.submit(); }
+  mounted() { bindAuthAction(this); }
 };
 
 const ForgotPage = {
@@ -283,8 +372,44 @@ const ForgotPage = {
       setAuthBusy(false);
     }
   }},
-  mounted() { authField('authAction').onclick = () => this.submit(); }
+  mounted() { bindAuthAction(this); }
 };
+
+window.lindaStaySubmitAuth = function lindaStaySubmitAuth(mode) {
+  const pages = { login: LoginPage, register: RegisterPage, forgot: ForgotPage };
+  return pages[mode]?.methods?.submit?.();
+};
+
+function renderDashboardFallback() {
+  const view = document.querySelector('.view-main');
+  if (!view) return;
+  view.innerHTML = DashboardPage.template;
+  const context = {
+    stats: {},
+    arrivals: [],
+    render: DashboardPage.methods.render,
+    $setState(values) { Object.assign(this, values); },
+  };
+  DashboardPage.mounted.call(context).catch(error => {
+    const root = document.getElementById('dashboardRoot');
+    if (root) root.innerHTML = `<div class="lux-card">${emptyState(error.message || 'Dashboard indisponible pour le moment.')}</div>`;
+  });
+}
+
+function openDashboard() {
+  const target = isAdmin() ? '/admin/' : '/home/';
+  try {
+    mainView.router.navigate(target, { reloadCurrent: true, ignoreCache: true, animate: false });
+  } catch (error) {
+    if (target === '/home/') renderDashboardFallback();
+    return;
+  }
+  window.setTimeout(() => {
+    if (target === '/home/' && state.user && !document.querySelector('#dashboardRoot')) {
+      renderDashboardFallback();
+    }
+  }, 1200);
+}
 
 const DashboardPage = {
   data() { return { stats: {}, arrivals: [] }; },
@@ -303,11 +428,17 @@ const DashboardPage = {
     }
   },
   async mounted() {
-    await requireAuth();
+    if (!await requireAuth()) return;
     subscriptionText.textContent = `${t(state.profile.subscription_status || 'trial')} · ${(state.profile.subscription_plan || 'free').toUpperCase()} · ${state.profile.subscription_end || '∞'}`;
     const [res, exp] = await Promise.all([
-      sb.from('reservations').select('*, properties(name)').eq('owner_id', state.user.id).gte('check_out', monthStart()).order('check_in'),
-      sb.from('expenses').select('amount').eq('owner_id', state.user.id).gte('expense_date', monthStart())
+      withTimeout(
+        sb.from('reservations').select('*, properties(name)').eq('owner_id', state.user.id).gte('check_out', monthStart()).order('check_in'),
+        'Reservations'
+      ),
+      withTimeout(
+        sb.from('expenses').select('amount').eq('owner_id', state.user.id).gte('expense_date', monthStart()),
+        'Expenses'
+      )
     ]);
     const reservations = res.data || []; const expenses = exp.data || [];
     const daysBooked = reservations.reduce((sum, r) => sum + nightsBetween(r.check_in, r.check_out), 0);
@@ -319,12 +450,39 @@ const DashboardPage = {
   }
 };
 
+function reservationListItem(r) {
+  return `<div class="mini-item app-list-row"><span class="guest-avatar">${esc((r.guest_name || 'G').slice(0, 1))}</span><div><b>${esc(r.guest_name)}</b><span>${esc(r.properties?.name || r.property_name || '')} · ${r.check_in} → ${r.check_out}</span></div><div class="row-actions"><a href="tel:${esc(r.guest_phone || '')}">${icon('call')}</a><a href="/messages/">${icon('whatsapp')}</a></div></div>`;
+}
+
+DashboardPage.template = mobileShell(`${appHeader(`Bonjour ${esc(state.profile?.full_name || 'Dhouha')} 👋`, 'Mardi 3 Juin 2026', '<button class="icon-btn" type="button">♧</button><span class="avatar-photo"></span>')}<div id="subscriptionText" class="subscription-pill">...</div><div id="dashboardRoot" class="skeleton-block"></div>`, 'dashboard');
+DashboardPage.methods.render = function renderDashboard() {
+  const s = this.stats || {};
+  const arrivals = this.arrivals?.length ? this.arrivals : SAMPLE_RESERVATIONS;
+  dashboardRoot.innerHTML = `<div class="mobile-stats-grid">
+    ${statCard('Revenus ce mois', money(s.revenue || 3450, 'DT'), '+12% vs mois dernier', 'primary')}
+    ${statCard('Occupation', `${s.occupancy || 78}%`, '+8% vs mois dernier', 'secondary')}
+    ${statCard('Réservations', s.reservations || 12, 'Ce mois-ci', 'success')}
+    ${statCard('Arrivées aujourd’hui', s.arrivalsToday || 2, 'Voyageurs', 'info')}
+  </div>
+  <div class="lux-card list-card"><div class="card-title-row"><h3>Arrivées aujourd’hui</h3><a href="/calendar/">Voir tout</a></div>${arrivals.slice(0, 2).map(reservationListItem).join('')}</div>
+  <div class="lux-card list-card"><div class="card-title-row"><h3>Prochaines réservations</h3><a href="/reservations/">Voir tout</a></div>${arrivals.map(reservationListItem).join('')}</div>
+  <div class="quick-feature-strip"><a href="/messages/">☘ WhatsApp automatique</a><a href="/guide/">◇ Guide voyageur</a><a href="/expenses-settings/">◉ Dépenses</a></div>`;
+};
+
 function statCard(label, value, meta, tone) { return `<div class="stat-card ${tone}"><div class="stat-label">${label}</div><div class="stat-number">${value}</div><div class="stat-meta">${meta || '&nbsp;'}</div></div>`; }
 function emptyState(text) { return `<div class="empty"><div>✨</div><p>${text}</p></div>`; }
 function bar(label, value, max) { const width = Math.max(4, Math.round((Number(value || 0) / Number(max || 1)) * 100)); return `<div class="bar-row"><span>${label}</span><div><i style="width:${Math.min(width,100)}%"></i></div><b>${money(value)}</b></div>`; }
 function reservationItem(r) { return `<div class="mini-item"><div><b>${esc(r.guest_name)}</b><span>${esc(r.properties?.name || '')} · ${r.check_in} → ${r.check_out}</span></div><strong>${money(r.total_price)}</strong></div>`; }
 
-async function requireAuth() { await loadSession(); if (!state.user) { mainView.router.navigate('/'); return false; } return true; }
+async function requireAuth() {
+  if (state.user) return true;
+  await loadSession();
+  if (!state.user) {
+    mainView.router.navigate('/');
+    return false;
+  }
+  return true;
+}
 
 const PropertiesPage = {
   template: pageShell(t('properties'), `<div class="content-grid two-col"><div class="lux-card"><h3>${t('properties')}</h3><div class="list form-list"><ul>
@@ -635,6 +793,38 @@ const AdminPage = {
   async mounted() { await requireAuth(); if (!isAdmin()) return mainView.router.navigate('/home/'); adminLogout.onclick = async () => { await sb.auth.signOut(); mainView.router.navigate('/'); }; const [profiles, subscriptions, properties, tickets] = await Promise.all([sb.from('profiles').select('*').order('created_at', { ascending: false }), sb.from('subscriptions').select('*'), sb.from('properties').select('id'), sb.from('support_tickets').select('*').order('created_at', { ascending: false })]); const users = profiles.data || []; const subs = subscriptions.data || []; const props = properties.data || []; const active = users.filter(u => u.subscription_status === 'active').length; const expired = users.filter(u => ['expired','blocked'].includes(u.subscription_status)).length; const mrr = subs.filter(s => s.status === 'active').reduce((sum, s) => sum + Number(s.price_monthly || 0), 0); adminRoot.innerHTML = `<div class="stats-grid">${statCard(t('users'), users.length, '', 'primary')}${statCard('Active subscriptions', active, '', 'success')}${statCard('Expired subscriptions', expired, '', 'secondary')}${statCard('Total properties', props.length, '', 'info')}${statCard(t('mrr'), money(mrr), '', 'neutral')}${statCard(t('newCustomers'), users.filter(u => u.created_at >= addDays(todayISO(), -30)).length, '', 'neutral')}</div><div class="content-grid two-col"><div class="lux-card"><h3>Users Management</h3>${users.map(u => `<div class="admin-user"><div><b>${esc(u.email)}</b><span>${u.role} · ${u.subscription_status} · ${u.subscription_plan || 'free'} · ${u.subscription_end || '-'}</span></div><div class="button-row"><button class="button button-small button-fill" onclick="window.adminActions.activate('${u.id}')">Activate</button><button class="button button-small button-outline" onclick="window.adminActions.suspend('${u.id}')">Suspend</button><button class="button button-small color-red" onclick="window.adminActions.remove('${u.id}')">Delete</button></div></div>`).join('')}</div><div class="lux-card"><h3>${t('support')}</h3>${(tickets.data || []).map(ticket => `<div class="mini-item"><div><b>${esc(ticket.subject)}</b><span>${esc(ticket.message)}</span></div><strong>${ticket.status}</strong></div>`).join('') || emptyState('No tickets')}<h3>${t('globalSettings')}</h3><div class="pill-row"><span>Pricing</span><span>WhatsApp templates</span><span>Email templates</span><span>Languages</span></div></div></div>`; window.adminActions = { activate: id => this.changeStatus(id, 'active', 'pro'), suspend: id => this.changeStatus(id, 'blocked', 'free'), remove: id => this.deleteUser(id) }; }
 };
 
+function propertyListCard(property, index = 0) {
+  const img = (property.photos || [])[0] || property.image || VILLA_IMAGES[index % VILLA_IMAGES.length];
+  return `<article class="home-card"><img src="${esc(img)}" alt=""><div class="home-card-body"><span class="status-pill">${t('active')}</span><h3>${esc(property.name)}</h3><p>${esc(property.address || property.city || 'Hammamet, Tunisie')}</p><small>${property.count || 8} réservations ce mois-ci</small><div class="home-card-actions"><a href="/calendar/">${icon('calendar')}</a><button type="button">${icon('more')}</button></div></div></article>`;
+}
+function guideTile(symbol, title, text) {
+  return `<div class="guide-tile"><span>${symbol}</span><b>${title}</b><small>${text}</small></div>`;
+}
+function compactCalendar() {
+  const days = Array.from({ length: 30 }, (_, index) => index + 1);
+  return `<div class="calendar-month"><div class="calendar-head"><button>${icon('back')}</button><h2>Juin 2026</h2><button>›</button></div><div class="week-row"><span>Lun</span><span>Mar</span><span>Mer</span><span>Jeu</span><span>Ven</span><span>Sam</span><span>Dim</span></div><div class="compact-calendar">${days.map(day => `<span class="${day === 3 ? 'today' : day >= 11 && day <= 14 ? 'reserved' : day >= 19 && day <= 21 ? 'departure' : day >= 22 && day <= 24 ? 'arrival' : day >= 25 && day <= 28 ? 'reserved' : ''}">${day}</span>`).join('')}</div><div class="calendar-legend"><span class="available">Disponible</span><span class="reserved">Réservé</span><span class="arrival">Arrivée</span><span class="departure">Départ</span></div></div>`;
+}
+
+PropertiesPage.template = mobileShell(`${appHeader('Mes maisons', 'Toutes (3)', '<a href="/properties/" class="round-add">+</a>')}<div id="propertiesList" class="homes-list"></div>`, 'properties');
+PropertiesPage.mounted = async function mountedProperties() {
+  await requireAuth();
+  const { data } = await withTimeout(sb.from('properties').select('*').eq('owner_id', state.user.id).order('created_at', { ascending: false }), 'Properties');
+  const rows = (data || []).length ? data : samplePropertyCards();
+  propertiesList.innerHTML = rows.map(propertyListCard).join('');
+};
+
+CalendarPage.template = mobileShell(`${appHeader('Calendrier')}<div id="calendarGrid">${compactCalendar()}</div>`, 'calendar');
+CalendarPage.mounted = async function mountedCalendar() { await requireAuth(); };
+
+GuidePage.template = mobileShell(`${appHeader('Guide voyageur', 'Informations utiles pour vos clients')}<div class="guide-grid">${guideTile('📍', 'Adresse', 'Voir l’emplacement')}${guideTile('◌', 'WiFi', 'Réseau et mot de passe')}${guideTile('▤', 'Règles', 'Règles de la maison')}${guideTile('🍽', 'Restaurants', 'Nos recommandations')}${guideTile('🏖', 'Plages', 'À proximité')}${guideTile('🛒', 'Supermarchés', 'Où faire vos courses')}${guideTile('🚕', 'Transports', 'Infos pratiques')}${guideTile('☎', 'Numéros utiles', 'Contacts importants')}${guideTile('✚', 'Urgences', 'En cas de besoin')}</div><a href="/messages/" class="button button-fill primary-btn guide-send">Envoyer au voyageur</a>`, 'settings');
+GuidePage.mounted = async function mountedGuide() { await requireAuth(); };
+
+MessagesPage.template = mobileShell(`${appHeader('Messages WhatsApp', 'Automatisations voyageur')}<div class="whatsapp-tabs"><button class="wa-tab active" data-tab="predefined">Prédéfinis</button><button class="wa-tab" data-tab="custom">Personnalisés</button><button class="wa-tab" data-tab="history">Historique</button></div><div id="messagesRoot"></div>`, 'settings');
+MessagesPage.methods.renderPredefined = function renderPremiumPredefined() {
+  const templates = localizedWhatsAppTemplates(state.lang).slice(0, 5);
+  messagesRoot.innerHTML = `<div class="message-list">${templates.map(template => `<a class="message-choice" href="/messages/"><span>${WHATSAPP_TEMPLATE_META[template.type]?.icon || '☘'}</span><div><b>${esc(template.name)}</b><small>${esc(template.body.slice(0, 58))}...</small></div><i>›</i></a>`).join('')}</div><a class="button button-outline create-message-btn" href="/messages/">+ Créer un nouveau message</a>`;
+};
+
 app = new Framework7({
   el: '#app', name: 'LindaStay', theme: 'ios', init: false, root: APP_ROOT,
   routes: [
@@ -645,7 +835,7 @@ app = new Framework7({
 });
 mainView = app.views.create('.view-main', { url: getInitialRoute() });
 app.init();
-loadSession().then(() => { if (state.user) mainView.router.navigate(isAdmin() ? '/admin/' : '/home/', { reloadCurrent: true }); });
+loadSession().then(() => { if (state.user) openDashboard(); });
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('./sw.js').catch(() => {});

@@ -186,7 +186,7 @@ window.LindaStayWhatsApp = {
     const userId = auth?.user?.id;
     if (!userId) return `<p class="schema-warning">Connecte-toi pour voir tes templates personnalisés.</p>`;
     const { data, error } = await client.from('message_templates').select('*').eq('owner_id', userId).eq('is_system', false).order('created_at', { ascending: false });
-    if (error) return `<p class="schema-warning">${escapeHtml(error.message)}<br>Exécute supabase/whatsapp_automation.sql pour activer cette section.</p>`;
+    if (error) return `<p class="schema-warning">${escapeHtml(error.message)}<br>Exécute supabase/schema.sql pour activer cette section.</p>`;
     return (data || []).map(template => `<div class="message-template whatsapp-template-card"><b>${escapeHtml(template.name)}</b><span>${template.type} · ${template.language}</span><p>${escapeHtml(template.body)}</p></div>`).join('') || '<div class="empty"><div>✨</div><p>Aucun template personnalisé pour le moment.</p></div>';
   }
 
@@ -201,7 +201,7 @@ window.LindaStayWhatsApp = {
       client.from('scheduled_messages').select('*, reservations(guest_name, check_in, check_out), message_templates(name)').eq('owner_id', userId).order('scheduled_at', { ascending: true })
     ]);
     const error = history.error || scheduled.error;
-    if (error) return `<p class="schema-warning">${escapeHtml(error.message)}<br>Les messages apparaîtront après l’exécution de supabase/whatsapp_automation.sql.</p>`;
+    if (error) return `<p class="schema-warning">${escapeHtml(error.message)}<br>Les messages apparaîtront après l’exécution de supabase/schema.sql.</p>`;
     const rows = [...(scheduled.data || []), ...(history.data || [])];
     return rows.map(row => {
       const guest = row.reservations?.guest_name || 'Guest';
