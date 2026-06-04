@@ -1,6 +1,7 @@
 const SUPABASE_URL = window.LINDASTAY_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = window.LINDASTAY_SUPABASE_ANON_KEY || '';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+window.sb = sb;
 
 const state = {
   user: null,
@@ -194,6 +195,10 @@ function reservationItem(r) { return `<div class="mini-item"><div><b>${esc(r.gue
 
 async function requireAuth() { await loadSession(); if (!state.user) { mainView.router.navigate('/'); return false; } return true; }
 
+const WA = window.LindaStayWhatsApp;
+function whatsappTemplate(type) { return WA.templateByType(type, state.profile?.preferred_language || state.lang || 'fr'); }
+function renderVariableChips(variables) { return Object.entries(variables || {}).filter(([, value]) => String(value || '').trim()).map(([key, value]) => `<span class="variable-chip">{${key}} · ${esc(String(value))}</span>`).join('') || '<span class="variable-chip">Aucune variable remplie</span>'; }
+
 const PropertiesPage = {
   template: pageShell(t('properties'), `<div class="content-grid two-col"><div class="lux-card"><h3>${t('properties')}</h3><div class="list form-list"><ul>
     ${input('propertyName','text',t('propertyName'))}${input('propertyDesc','text',t('description'))}${input('propertyAddress','text',t('address'))}${input('mapsLink','url','Google Maps')}${input('gpsCoordinates','text','GPS coordinates')}${input('photoUrls','text','Photo URLs (comma separated)')}${input('capacity','number','Capacity')}${input('bedrooms','number','Bedrooms')}${input('bathrooms','number','Bathrooms')}${input('amenities','text',t('amenities'))}${input('wifiName','text','WiFi SSID')}${input('wifiPassword','text','WiFi password')}${textarea('checkInInstructions',t('checkInInstructions'))}${textarea('houseRules',t('houseRules'))}</ul></div><button class="button button-fill primary-btn" id="saveProperty">${t('save')}</button></div><div class="lux-card"><div class="card-title-row"><h3>Portfolio</h3><a href="/guide/">${t('travelerGuide')}</a></div><div id="propertiesList"></div></div></div>`, 'properties'),
@@ -232,20 +237,41 @@ const ReservationNewPage = {
         const created = await sb.from('reservations').insert(reservation).select().single(); if (created.error) return app.dialog.alert(created.error.message);
         const expenses = this.templates.map(template => ({ owner_id: state.user.id, reservation_id: created.data.id, template_id: template.id, name: template.name, category: template.category, amount: expenseAmount(template, nights, guests), expense_date: checkIn.value, forecast: true })).filter(e => e.amount > 0);
         if (expenses.length) await sb.from('expenses').insert(expenses);
+        const selectedProperty = this.properties.find(property => property.id === property_id) || {};
+        const scheduled = await WA.scheduleDefaultMessages(created.data, selectedProperty, state.profile || {});
+        if (scheduled.error) app.dialog.alert(`Réservation créée, mais l’automatisation WhatsApp n’est pas encore activée dans Supabase: ${scheduled.error.message}`);
         mainView.router.navigate('/reservations/');
       });
     }
   },
-  async mounted() { await requireAuth(); const [props, templatesResult] = await Promise.all([sb.from('properties').select('id,name').eq('owner_id', state.user.id).order('name'), sb.from('expense_templates').select('*').eq('owner_id', state.user.id).eq('is_active', true).order('created_at')]); const properties = props.data || []; const templates = templatesResult.data || []; this.properties = properties; this.templates = templates; this.$setState({ properties, templates }); propertyId.innerHTML = properties.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join(''); ['checkIn','checkOut','guestCount','totalPrice','depositPaid'].forEach(id => document.getElementById(id).oninput = () => this.calculate()); createReservation.onclick = () => this.createReservation(); this.calculate(); }
+  async mounted() { await requireAuth(); const [props, templatesResult] = await Promise.all([sb.from('properties').select('*').eq('owner_id', state.user.id).order('name'), sb.from('expense_templates').select('*').eq('owner_id', state.user.id).eq('is_active', true).order('created_at')]); const properties = props.data || []; const templates = templatesResult.data || []; this.properties = properties; this.templates = templates; this.$setState({ properties, templates }); propertyId.innerHTML = properties.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join(''); ['checkIn','checkOut','guestCount','totalPrice','depositPaid'].forEach(id => document.getElementById(id).oninput = () => this.calculate()); createReservation.onclick = () => this.createReservation(); this.calculate(); }
 };
 function expenseAmount(template, nights, guests) { const amount = Number(template.default_amount || 0); if (template.type === 'per_night') return amount * nights; if (template.type === 'per_guest') return amount * guests; if (template.type === 'manual') return 0; return amount; }
 
 const ReservationsPage = {
   template: pageShell(t('reservations'), `<div class="section-header"><h2>${t('reservations')}</h2><a href="/reservations/new/" class="button button-fill">${t('newReservation')}</a></div><div id="reservationsList" class="lux-card"></div>`, 'new'),
-  async mounted() { await requireAuth(); const { data } = await sb.from('reservations').select('*, properties(name)').eq('owner_id', state.user.id).order('check_in', { ascending: false }); reservationsList.innerHTML = (data || []).length ? data.map(r => `<div class="reservation-row"><div><b>${esc(r.guest_name)}</b><span>${esc(r.properties?.name || '')} · ${r.check_in} → ${r.check_out} · ${r.nights} nights</span></div><div><strong>${money(r.total_price)}</strong><small>${t('remaining')}: ${money(r.remaining_balance)}</small><a class="external" target="_blank" href="${whatsappUrl(r)}">${t('sendWhatsapp')}</a></div></div>`).join('') : emptyState('Aucune réservation.'); }
+  methods: {
+    async quickMessage(id, type) {
+      const reservation = this.reservations.find(item => item.id === id);
+      if (!reservation) return;
+      const template = whatsappTemplate(type);
+      const generated = WA.generateMessageFromTemplate(template, reservation, reservation.properties || {}, reservation, state.profile || {});
+      showWhatsAppPreview(reservation, template, generated);
+    }
+  },
+  async mounted() {
+    await requireAuth();
+    const { data } = await sb.from('reservations').select('*, properties(*)').eq('owner_id', state.user.id).order('check_in', { ascending: false });
+    this.reservations = data || [];
+    reservationsList.innerHTML = this.reservations.length ? this.reservations.map(r => `<div class="reservation-row"><div><b>${esc(r.guest_name)}</b><span>${esc(r.properties?.name || '')} · ${r.check_in} → ${r.check_out} · ${r.nights} nights</span><div class="whatsapp-quick-actions"><button class="button button-small whatsapp-outline" data-wa-type="booking_confirmation" data-id="${r.id}">Confirmation</button><button class="button button-small whatsapp-outline" data-wa-type="arrival_reminder" data-id="${r.id}">Infos arrivée</button><button class="button button-small whatsapp-outline" data-wa-type="payment_reminder" data-id="${r.id}">Rappel paiement</button><button class="button button-small whatsapp-outline" data-wa-type="thank_you" data-id="${r.id}">Merci</button></div></div><div><strong>${money(r.total_price)}</strong><small>${t('remaining')}: ${money(r.remaining_balance)}</small><span class="wa-status-pill">WhatsApp prêt</span></div></div>`).join('') : emptyState('Aucune réservation.');
+    reservationsList.onclick = event => { const button = event.target.closest('[data-wa-type]'); if (button) this.quickMessage(button.dataset.id, button.dataset.waType); };
+  }
 };
 
-function whatsappUrl(r, kind = 'confirmation') { const text = encodeURIComponent(`LindaStay - ${kind}\nBonjour ${r.guest_name}, votre réservation est confirmée du ${r.check_in} au ${r.check_out}. Total: ${r.total_price}. Avance: ${r.deposit_paid}. Reste: ${r.remaining_balance}.`); return `https://wa.me/${String(r.guest_phone || '').replace(/\D/g, '')}?text=${text}`; }
+function showWhatsAppPreview(reservation, template, generated) {
+  const html = `<div class="message-preview"><div class="preview-person"><b>${esc(reservation.guest_name || '')}</b><span>${esc(reservation.guest_phone || 'Téléphone manquant')}</span></div><div class="preview-body">${esc(generated.body).replace(/\n/g, '<br>')}</div><h4>Variables utilisées</h4><div class="variable-list">${renderVariableChips(generated.variables)}</div></div>`;
+  app.dialog.create({ title: template.name, text: html, buttons: [{ text: 'Annuler' }, { text: 'Send on WhatsApp', bold: true, color: 'green', onClick: async () => { try { WA.openWhatsApp(reservation.guest_phone, generated.body); await WA.createMessageHistory({ reservation, template, message: generated.body, status: 'sent' }); } catch (error) { app.dialog.alert(error.message); } } }] }).open();
+}
 
 const CalendarPage = {
   template: pageShell(t('calendar'), `<div class="lux-card"><div class="calendar-head"><h2>${t('calendar')}</h2><div class="legend"><span class="available">Available</span><span class="reserved">Reserved</span><span class="arrival">Arrival</span><span class="departure">Departure</span><span class="blocked">Blocked</span></div></div><div id="calendarGrid" class="airbnb-calendar"></div></div>`, 'calendar'),
@@ -266,9 +292,31 @@ const GuidePage = {
 };
 
 const MessagesPage = {
-  template: pageShell(t('sendWhatsapp'), `<div class="lux-card"><h3>WhatsApp Automation</h3><div class="template-grid">${['Booking confirmation','Arrival reminder','Payment reminder','Check-out message','Thank you message'].map((name, i) => `<div class="message-template"><b>${name}</b><p>${['Bonjour {guest}, votre réservation est confirmée pour {property}.','Rappel arrivée: {check_in}. Voici les instructions.','Paiement: reste {remaining_balance}.','Merci de libérer le logement avant 11h.','Merci pour votre séjour chez LindaStay.'][i]}</p></div>`).join('')}</div></div>`, 'settings'),
-  async mounted() { await requireAuth(); }
+  template: pageShell(t('sendWhatsapp'), `<div class="whatsapp-header"><div><p class="eyebrow">WhatsApp</p><h2>Automation Center</h2><span>Templates, programmation et historique des messages voyageurs.</span></div><div class="whatsapp-logo">☘</div></div><div class="whatsapp-tabs"><button class="wa-tab active" data-tab="system">Predefined templates</button><button class="wa-tab" data-tab="custom">Custom templates</button><button class="wa-tab" data-tab="history">Message history</button></div><div id="whatsappRoot" class="lux-card"></div>`, 'settings'),
+  methods: {
+    renderSystem() {
+      const templates = WA.templatesForLanguage(state.profile?.preferred_language || state.lang || 'fr');
+      whatsappRoot.innerHTML = `<div class="card-title-row"><h3>Templates prédéfinis</h3><span class="wa-status-pill">Actifs dans l’app</span></div><div class="template-grid">${templates.map(template => `<div class="message-template whatsapp-template-card"><b>${esc(template.name)}</b><span>${template.type} · ${template.language.toUpperCase()}</span><p>${esc(template.body)}</p></div>`).join('')}</div><div class="variable-list">${WA.WHATSAPP_VARIABLES.map(variable => `<span class="variable-chip">{${variable}}</span>`).join('')}</div>`;
+    },
+    async renderCustom() {
+      const { data, error } = await sb.from('message_templates').select('*').eq('owner_id', state.user.id).eq('is_system', false).order('created_at', { ascending: false });
+      whatsappRoot.innerHTML = `<div class="card-title-row"><h3>Custom templates</h3><span class="wa-status-pill ${error ? 'failed' : ''}">${error ? 'Table Supabase à activer' : 'Supabase connecté'}</span></div>${error ? `<p class="schema-warning">${esc(error.message)}<br>Exécute supabase/schema.sql pour activer les templates personnalisés.</p>` : (data || []).map(template => `<div class="message-template whatsapp-template-card"><b>${esc(template.name)}</b><span>${template.type} · ${template.language}</span><p>${esc(template.body)}</p></div>`).join('') || emptyState('Aucun template personnalisé pour le moment.')}`;
+    },
+    async renderHistory() {
+      const [history, scheduled] = await Promise.all([
+        sb.from('message_history').select('*, reservations(guest_name, check_in, check_out), message_templates(name)').eq('owner_id', state.user.id).order('created_at', { ascending: false }),
+        sb.from('scheduled_messages').select('*, reservations(guest_name, check_in, check_out), message_templates(name)').eq('owner_id', state.user.id).order('scheduled_at', { ascending: true })
+      ]);
+      const rows = [...(scheduled.data || []), ...(history.data || [])];
+      const error = history.error || scheduled.error;
+      whatsappRoot.innerHTML = `<div class="card-title-row"><h3>Message history</h3><span class="wa-status-pill ${error ? 'failed' : ''}">${error ? 'Tables Supabase à activer' : `${rows.length} messages`}</span></div>${error ? `<p class="schema-warning">${esc(error.message)}<br>Les messages programmés apparaîtront après l’exécution de supabase/schema.sql.</p>` : rows.map(messageHistoryRow).join('') || emptyState('Aucun message envoyé ou programmé.')}`;
+    },
+    openTab(tab) { document.querySelectorAll('.wa-tab').forEach(button => button.classList.toggle('active', button.dataset.tab === tab)); if (tab === 'custom') return this.renderCustom(); if (tab === 'history') return this.renderHistory(); return this.renderSystem(); }
+  },
+  async mounted() { await requireAuth(); whatsappRoot.closest('.page-content').onclick = event => { const button = event.target.closest('.wa-tab'); if (button) this.openTab(button.dataset.tab); }; this.renderSystem(); }
 };
+
+function messageHistoryRow(row) { const date = row.sent_at || row.scheduled_at || row.created_at || ''; const guest = row.reservations?.guest_name || 'Guest'; const reservation = row.reservations ? `${row.reservations.check_in} → ${row.reservations.check_out}` : 'Reservation'; const name = row.message_templates?.name || 'WhatsApp template'; return `<div class="message-history-row"><div><b>${esc(guest)}</b><span>${esc(name)} · ${esc(reservation)}</span><small>${esc(date ? new Date(date).toLocaleString() : '')}</small></div><strong class="status-${row.status}">${esc(row.status)}</strong></div>`; }
 
 const SettingsPage = {
   template: pageShell(t('settings'), `<div class="content-grid two-col"><div class="lux-card settings-menu"><a href="/profile/">👤 ${t('profile')}</a><a href="/expenses-settings/">💡 ${t('expenseTemplates')}</a><a href="/reservations/">🧾 ${t('reservations')}</a><a href="/guide/">🗺️ ${t('travelerGuide')}</a><a href="/messages/">💬 WhatsApp</a><a href="/support/">🎧 ${t('support')}</a><a href="/admin/">🛡️ ${t('adminPanel')}</a></div><div class="lux-card"><h3>${t('subscriptions')}</h3><div class="plans">${plan('Free','1 property · 10 reservations/month','0€')}${plan('Starter','Unlimited basics','9€')}${plan('Pro','Profitability + guide','19€')}${plan('Premium','Teams + automation','39€')}</div></div></div>`, 'settings'),
