@@ -37,6 +37,31 @@
       };
     })();
   </script>
+  <script>
+    // GitHub Pages safety guard: older app bundles may pass `/lindastay/`
+    // as Framework7 `root`; Framework7 expects the DOM root instead.
+    (function () {
+      var framework7Ctor;
+      Object.defineProperty(window, 'Framework7', {
+        configurable: true,
+        get: function () { return framework7Ctor; },
+        set: function (Ctor) {
+          if (typeof Ctor !== 'function') {
+            framework7Ctor = Ctor;
+            return;
+          }
+          framework7Ctor = function LindaStayFramework7(options) {
+            if (options && typeof options.root === 'string' && options.root.charAt(0) === '/') {
+              options = Object.assign({}, options, { root: '#app' });
+            }
+            return new Ctor(options);
+          };
+          framework7Ctor.prototype = Ctor.prototype;
+          Object.keys(Ctor).forEach(function (key) { framework7Ctor[key] = Ctor[key]; });
+        }
+      });
+    })();
+  </script>
   <style>
     html,
     body,
