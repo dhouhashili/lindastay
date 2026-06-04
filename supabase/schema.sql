@@ -163,6 +163,68 @@ create table if not exists support_tickets (
   updated_at timestamptz default now()
 );
 
+-- Compatibility migrations for existing LindaStay databases.
+-- `create table if not exists` does not add newly introduced columns, so keep
+-- this block additive and safe to rerun from the Supabase SQL Editor.
+alter table profiles add column if not exists email text;
+alter table profiles add column if not exists full_name text;
+alter table profiles add column if not exists phone text;
+alter table profiles add column if not exists company_name text;
+alter table profiles add column if not exists role text not null default 'property_owner';
+alter table profiles add column if not exists preferred_language text not null default 'fr';
+alter table profiles add column if not exists country text default 'Tunisia';
+alter table profiles add column if not exists subscription_status text not null default 'trial';
+alter table profiles add column if not exists subscription_plan text not null default 'free';
+alter table profiles add column if not exists subscription_start date default current_date;
+alter table profiles add column if not exists subscription_end date default (current_date + interval '14 days');
+alter table profiles add column if not exists is_read_only boolean generated always as (subscription_status in ('expired','blocked')) stored;
+alter table profiles add column if not exists created_at timestamptz default now();
+alter table profiles add column if not exists updated_at timestamptz default now();
+
+alter table properties add column if not exists description text;
+alter table properties add column if not exists address text;
+alter table properties add column if not exists google_maps_link text;
+alter table properties add column if not exists gps_coordinates text;
+alter table properties add column if not exists photos text[] default '{}';
+alter table properties add column if not exists capacity int default 1;
+alter table properties add column if not exists bedrooms int default 0;
+alter table properties add column if not exists bathrooms numeric default 0;
+alter table properties add column if not exists amenities text[] default '{}';
+alter table properties add column if not exists wifi_name text;
+alter table properties add column if not exists wifi_password text;
+alter table properties add column if not exists check_in_instructions text;
+alter table properties add column if not exists house_rules text;
+alter table properties add column if not exists base_price numeric default 0;
+alter table properties add column if not exists currency text default 'EUR';
+alter table properties add column if not exists created_at timestamptz default now();
+alter table properties add column if not exists updated_at timestamptz default now();
+
+alter table reservations add column if not exists guest_id uuid references guests(id) on delete set null;
+alter table reservations add column if not exists guest_name text;
+alter table reservations add column if not exists guest_phone text;
+alter table reservations add column if not exists guest_email text;
+alter table reservations add column if not exists check_in date;
+alter table reservations add column if not exists check_out date;
+alter table reservations add column if not exists nights int not null default 0;
+alter table reservations add column if not exists guests_count int default 1;
+alter table reservations add column if not exists total_price numeric default 0;
+alter table reservations add column if not exists deposit_paid numeric default 0;
+alter table reservations add column if not exists remaining_balance numeric default 0;
+alter table reservations add column if not exists status text default 'pending';
+alter table reservations add column if not exists source text default 'direct';
+alter table reservations add column if not exists notes text;
+alter table reservations add column if not exists created_at timestamptz default now();
+alter table reservations add column if not exists updated_at timestamptz default now();
+
+alter table messages add column if not exists reservation_id uuid references reservations(id) on delete set null;
+alter table messages add column if not exists type text;
+alter table messages add column if not exists channel text not null default 'whatsapp';
+alter table messages add column if not exists template text;
+alter table messages add column if not exists generated_message text;
+alter table messages add column if not exists recipient text;
+alter table messages add column if not exists sent_at timestamptz;
+alter table messages add column if not exists created_at timestamptz default now();
+
 create index if not exists idx_profiles_role on profiles(role);
 create index if not exists idx_profiles_subscription on profiles(subscription_status, subscription_plan, subscription_end);
 create index if not exists idx_properties_owner on properties(owner_id);
@@ -220,54 +282,94 @@ returns boolean language sql stable security definer set search_path = public as
   );
 $$;
 
+drop policy if exists "profiles select own staff or admin" on profiles;
 create policy "profiles select own staff or admin" on profiles for select using (id = auth.uid() or is_super_admin());
+drop policy if exists "profiles insert own" on profiles;
 create policy "profiles insert own" on profiles for insert with check (id = auth.uid());
+drop policy if exists "profiles update own or admin" on profiles;
 create policy "profiles update own or admin" on profiles for update using (id = auth.uid() or is_super_admin()) with check (id = auth.uid() or is_super_admin());
+drop policy if exists "profiles delete admin" on profiles;
 create policy "profiles delete admin" on profiles for delete using (is_super_admin());
 
+drop policy if exists "properties select owner admin" on properties;
 create policy "properties select owner admin" on properties for select using (owner_id = auth.uid() or is_super_admin());
+drop policy if exists "properties insert active owner" on properties;
 create policy "properties insert active owner" on properties for insert with check (owner_id = auth.uid() and has_write_access());
+drop policy if exists "properties update active owner" on properties;
 create policy "properties update active owner" on properties for update using (owner_id = auth.uid() and has_write_access()) with check (owner_id = auth.uid());
+drop policy if exists "properties delete active owner" on properties;
 create policy "properties delete active owner" on properties for delete using (owner_id = auth.uid() and has_write_access());
 
+drop policy if exists "guests select owner admin" on guests;
 create policy "guests select owner admin" on guests for select using (owner_id = auth.uid() or is_super_admin());
+drop policy if exists "guests insert active owner" on guests;
 create policy "guests insert active owner" on guests for insert with check (owner_id = auth.uid() and has_write_access());
+drop policy if exists "guests update active owner" on guests;
 create policy "guests update active owner" on guests for update using (owner_id = auth.uid() and has_write_access()) with check (owner_id = auth.uid());
+drop policy if exists "guests delete active owner" on guests;
 create policy "guests delete active owner" on guests for delete using (owner_id = auth.uid() and has_write_access());
 
+drop policy if exists "reservations select owner admin" on reservations;
 create policy "reservations select owner admin" on reservations for select using (owner_id = auth.uid() or is_super_admin());
+drop policy if exists "reservations insert active owner" on reservations;
 create policy "reservations insert active owner" on reservations for insert with check (owner_id = auth.uid() and has_write_access());
+drop policy if exists "reservations update active owner" on reservations;
 create policy "reservations update active owner" on reservations for update using (owner_id = auth.uid() and has_write_access()) with check (owner_id = auth.uid());
+drop policy if exists "reservations delete active owner" on reservations;
 create policy "reservations delete active owner" on reservations for delete using (owner_id = auth.uid() and has_write_access());
 
+drop policy if exists "expense templates select owner admin" on expense_templates;
 create policy "expense templates select owner admin" on expense_templates for select using (owner_id = auth.uid() or is_super_admin());
+drop policy if exists "expense templates insert active owner" on expense_templates;
 create policy "expense templates insert active owner" on expense_templates for insert with check (owner_id = auth.uid() and has_write_access());
+drop policy if exists "expense templates update active owner" on expense_templates;
 create policy "expense templates update active owner" on expense_templates for update using (owner_id = auth.uid() and has_write_access()) with check (owner_id = auth.uid());
+drop policy if exists "expense templates delete active owner" on expense_templates;
 create policy "expense templates delete active owner" on expense_templates for delete using (owner_id = auth.uid() and has_write_access());
 
+drop policy if exists "expenses select owner admin" on expenses;
 create policy "expenses select owner admin" on expenses for select using (owner_id = auth.uid() or is_super_admin());
+drop policy if exists "expenses insert active owner" on expenses;
 create policy "expenses insert active owner" on expenses for insert with check (owner_id = auth.uid() and has_write_access());
+drop policy if exists "expenses update active owner" on expenses;
 create policy "expenses update active owner" on expenses for update using (owner_id = auth.uid() and has_write_access()) with check (owner_id = auth.uid());
+drop policy if exists "expenses delete active owner" on expenses;
 create policy "expenses delete active owner" on expenses for delete using (owner_id = auth.uid() and has_write_access());
 
+drop policy if exists "guides public or owner" on traveler_guides;
 create policy "guides public or owner" on traveler_guides for select using (is_public or owner_id = auth.uid() or is_super_admin());
+drop policy if exists "guides insert active owner" on traveler_guides;
 create policy "guides insert active owner" on traveler_guides for insert with check (owner_id = auth.uid() and has_write_access());
+drop policy if exists "guides update active owner" on traveler_guides;
 create policy "guides update active owner" on traveler_guides for update using (owner_id = auth.uid() and has_write_access()) with check (owner_id = auth.uid());
+drop policy if exists "guides delete active owner" on traveler_guides;
 create policy "guides delete active owner" on traveler_guides for delete using (owner_id = auth.uid() and has_write_access());
 
+drop policy if exists "subscriptions select own admin" on subscriptions;
 create policy "subscriptions select own admin" on subscriptions for select using (owner_id = auth.uid() or is_super_admin());
+drop policy if exists "subscriptions insert own admin" on subscriptions;
 create policy "subscriptions insert own admin" on subscriptions for insert with check (owner_id = auth.uid() or is_super_admin());
+drop policy if exists "subscriptions update admin" on subscriptions;
 create policy "subscriptions update admin" on subscriptions for update using (is_super_admin()) with check (is_super_admin());
+drop policy if exists "subscriptions delete admin" on subscriptions;
 create policy "subscriptions delete admin" on subscriptions for delete using (is_super_admin());
 
+drop policy if exists "messages select owner admin" on messages;
 create policy "messages select owner admin" on messages for select using (owner_id = auth.uid() or is_super_admin());
+drop policy if exists "messages insert active owner" on messages;
 create policy "messages insert active owner" on messages for insert with check (owner_id = auth.uid() and has_write_access());
+drop policy if exists "messages update active owner" on messages;
 create policy "messages update active owner" on messages for update using (owner_id = auth.uid() and has_write_access()) with check (owner_id = auth.uid());
+drop policy if exists "messages delete active owner" on messages;
 create policy "messages delete active owner" on messages for delete using (owner_id = auth.uid() and has_write_access());
 
+drop policy if exists "tickets select own admin" on support_tickets;
 create policy "tickets select own admin" on support_tickets for select using (owner_id = auth.uid() or is_super_admin());
+drop policy if exists "tickets insert authenticated" on support_tickets;
 create policy "tickets insert authenticated" on support_tickets for insert with check (owner_id = auth.uid());
+drop policy if exists "tickets update admin" on support_tickets;
 create policy "tickets update admin" on support_tickets for update using (is_super_admin()) with check (is_super_admin());
+drop policy if exists "tickets delete admin" on support_tickets;
 create policy "tickets delete admin" on support_tickets for delete using (is_super_admin());
 
 -- Seed helpers for a new owner. Replace OWNER_UUID with an existing profiles.id.
