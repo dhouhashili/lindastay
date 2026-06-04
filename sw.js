@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lindastay-v1';
+const CACHE_NAME = 'lindastay-v4';
 const ASSETS = ['./', './index.html', './css/app.css', './js/app.js', './js/config.js', './manifest.webmanifest'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));

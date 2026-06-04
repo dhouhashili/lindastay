@@ -129,3 +129,118 @@ html[dir="rtl"] .reservation-row > div:last-child { text-align: left; }
   .mini-item, .reservation-row, .admin-user { display: grid; }
   .reservation-row > div:last-child { text-align: left; }
 }
+
+.boot-error {
+  min-height: 100%;
+  box-sizing: border-box;
+  display: grid;
+  place-content: center;
+  gap: 14px;
+  padding: 28px;
+  text-align: center;
+  background: radial-gradient(circle at top left, #ffffff 0, #fafafa 34%, #f5efe6 100%);
+}
+.boot-error .brand-mark { margin: 0 auto; }
+.boot-error h1 { margin: 0; color: var(--linda-primary); font-size: 36px; letter-spacing: -0.05em; }
+.boot-error p { max-width: 420px; margin: 0 auto; color: var(--linda-muted); line-height: 1.55; }
+.boot-error button {
+  border: 0;
+  border-radius: 16px;
+  background: var(--linda-primary);
+  color: #fff;
+  padding: 12px 18px;
+  font-weight: 800;
+  box-shadow: 0 12px 28px rgba(30, 77, 107, 0.25);
+}
+
+.auth-feedback {
+  margin-top: 14px;
+  border-radius: 16px;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.4;
+  background: #edf2f5;
+  color: var(--linda-primary);
+}
+.auth-feedback[hidden] { display: none; }
+.auth-feedback.error { background: #ffe0e0; color: #8a1f1f; }
+.auth-feedback.success { background: #d8f5e8; color: #155b3c; }
+.auth-feedback.info { background: #e1edff; color: var(--linda-primary); }
+.primary-btn[disabled] { opacity: .72; pointer-events: none; }
+
+.whatsapp-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  margin: 0 0 16px;
+  padding-bottom: 4px;
+}
+.wa-tab {
+  border: 1px solid var(--linda-border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--linda-primary);
+  padding: 10px 14px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+.wa-tab.active, .whatsapp-btn {
+  background: #25D366 !important;
+  color: #fff !important;
+  border-color: #25D366 !important;
+  box-shadow: 0 12px 28px rgba(37, 211, 102, .24) !important;
+}
+.whatsapp-outline {
+  border: 1px solid rgba(37, 211, 102, .45);
+  color: #128C4A;
+  border-radius: 999px;
+  background: rgba(37, 211, 102, .08);
+  text-transform: none;
+  font-weight: 800;
+}
+.quick-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; margin-top: 8px; }
+.reservation-row-actions { align-items: flex-start; }
+.pro-template { display: grid; gap: 10px; }
+.template-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.template-top span, .status-badge {
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: var(--linda-secondary);
+  color: var(--linda-primary);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.variable-strip { display: flex; flex-wrap: wrap; gap: 6px; }
+.variable-strip.full { margin: 10px 0 14px; }
+.variable-strip code {
+  border-radius: 999px;
+  background: #edf2f5;
+  color: var(--linda-primary);
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 850;
+}
+.schedule-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.schedule-grid div { border: 1px solid var(--linda-border); border-radius: 18px; padding: 14px; background: #fff; }
+.schedule-grid span { display: block; margin-top: 5px; color: var(--linda-muted); font-size: 13px; line-height: 1.4; }
+.whatsapp-preview-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr); gap: 18px; align-items: start; }
+.preview-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+.preview-head h2 { margin: 0 0 8px; color: var(--linda-primary); letter-spacing: -.04em; }
+.wa-logo { width: 52px; height: 52px; border-radius: 18px; display: grid; place-items: center; background: #25D366; color: white; font-size: 24px; box-shadow: 0 12px 28px rgba(37, 211, 102, .25); }
+.wa-message-preview { margin: 18px 0; padding: 18px; border-radius: 22px; background: #e8fff1; border: 1px solid rgba(37, 211, 102, .26); color: #173d2a; line-height: 1.55; white-space: pre-wrap; }
+.message-history-row { display: flex; justify-content: space-between; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--linda-border); }
+.message-history-row:last-child { border-bottom: 0; }
+.message-history-row span, .message-history-row small { display: block; color: var(--linda-muted); margin-top: 4px; font-size: 12px; }
+.message-history-row > div:last-child { text-align: right; }
+.status-badge.sent { background: #d8f5e8; color: #155b3c; }
+.status-badge.scheduled { background: #e1edff; color: var(--linda-primary); }
+.status-badge.failed { background: #ffe0e0; color: #8a1f1f; }
+.status-badge.cancelled { background: #f1f1f1; color: #666; }
+@media (max-width: 760px) {
+  .whatsapp-preview-grid { grid-template-columns: 1fr; }
+  .quick-actions { justify-content: flex-start; }
+  .message-history-row { display: grid; }
+  .message-history-row > div:last-child { text-align: left; }
+}
